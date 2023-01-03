@@ -1,0 +1,244 @@
+/*Load data into SAS*/
+libname alldata xlsx "/home/sigrid0/AllData/turnover.xlsx";
+
+/*Specify macro variables*/
+%let char_inputs= department salary;
+%let target= turnover;
+%let num_inputs= satisfaction evaluation project_Count average_Monthly_Hours
+				years_At_Company work_Accident Promotion;  
+				
+/*format to bin variables into category*/
+proc format; /* department format*/
+value $dfmt
+'IT'=1'RandD'=2 'accounting'=3 'hr'=4 'management'=5 'marketing'=6
+'product_mng'=7 'sales'=8 'support'=9 'technical'=10;
+run;
+
+proc format;/*salary format*/
+value $sfmt 
+'high'=1
+'medium'=2
+'low'=3;
+run;
+
+/*Create dataset*/
+data _employee_turnover(rename=(satisfaction_level = satisfaction
+last_evaluation = evaluation number_project = project_Count 
+average_montly_hours = average_Monthly_Hours time_spend_company = years_At_Company
+Work_accident = work_Accident promotion_last_5years = promotion
+sales = department left= turnover));
+set alldata.turnover;
+label satisfaction_level= "satisfaction"
+      last_evaluation = "evaluation"
+      number_project = "project_Count"
+      average_montly_hours = "average_Monthly_Hours"
+      time_spend_company = "years_At_Company"
+      Work_accident = "work_Accident"
+      promotion_last_5years = "promotion"
+      sales = "department"
+      left= "turnover";
+run;
+
+/*Create new dataset for processing*/
+data employee_turnover;
+set _employee_turnover;
+format department dfmt.;/*assigns format to department*/
+format salary sfmt.;/*assigns format to salary*/
+run;
+
+/*checking data type*/
+proc contents data= employee_turnover;
+run;
+
+/*printing first 10 observations*/
+proc print data = employee_turnover(obs=10);
+run;
+
+/***********************/
+/* EXPLORING THE DATA  */
+/***********************/
+
+/******** Numerical variables analysis ********/
+
+/*Statistical Summary*/
+proc means data=employee_turnover; 
+var &num_inputs;
+run;
+
+/*Distribution summary*/
+proc univariate data=employee_turnover plots normal;
+histogram &num_inputs/normal;
+inset n min max mean median;
+var &num_inputs;
+run;
+
+/*Examining relationship between variables*/
+title 'Aassociation of predictors with outcome';
+proc corr data=employee_turnover plots nosimple;
+var &num_inputs;
+with turnover;
+run;
+
+title 'correlation of predictors';
+proc corr data= employee_turnover plots nosimple;
+var &num_inputs;
+run;
+
+/*One-Sample T-Test (Measuring Satisfaction Level)*/
+
+/*comparing the means of employee turnover satisfaction*/
+/*against the employee population satisfaction*/
+
+proc means data= employee_turnover;
+var satisfaction;
+class turnover;
+run;
+
+/*statistical test for correlation*/
+ proc ttest data=employee_turnover plots=all;
+ class turnover;
+ var satisfaction;
+ run;
+ 
+ /******** Categorical variables analysis ********/
+
+/*Frequency summary*/
+proc freq data=employee_turnover;
+tables &char_inputs turnover/ plots=freqplot;
+run;
+
+/* Crosstabulate analysis*/
+title 'two-way frequency tables analysis';
+proc freq data= employee_turnover;
+tables (&char_inputs)*(turnover)/chisq 
+plots=(freqplot(twoway=groupvertical scale=percent));
+run;
+  
+ /*Salary vs turnover*/
+proc freq data=employee_turnover;
+tables turnover*salary/plotS=(freqplot);
+run;
+ 
+/*Department vs turnover*/
+proc freq data=employee_turnover;
+tables turnover*department/plots=(freqplot);
+run;
+
+/*turnover vs project_count*/
+proc univariate data=employee_turnover plots;
+class turnover;
+var project_count;
+run;
+
+/*turnover vs evaluation*/
+proc univariate data=employee_turnover plots;
+class turnover;
+var evaluation;
+run;
+
+/*Turnover vs Average_Monthly_Hours*/
+proc univariate data=employee_turnover plots;
+class turnover;
+var Average_Monthly_Hours;
+run;
+
+/*Turnover vs Satisfaction*/
+proc univariate data=employee_turnover plots;
+class turnover;
+var satisfaction;
+run;
+
+/*correlated features*/
+
+/*ProjectCount vs Average_Monthly_Hours*/
+proc sgplot data=employee_turnover;
+vbox average_monthly_hours / group= turnover category= project_count;
+run;
+
+/*ProjectCount vs Evaluation*/
+proc sgplot data=employee_turnover;
+vbox evaluation / group= turnover category= project_count;
+run;
+
+/*Satisfaction VS Evaluation*/
+proc sgscatter  data = employee_turnover;
+   plot evaluation*satisfaction/
+   group= turnover;
+run;
+
+/*Turnover vs YearsAtCompany*/
+proc sgplot data = employee_turnover;
+vbar years_at_company /group = turnover groupdisplay=cluster;
+run;
+quit;
+
+/*principal component analysis to help profile cluster*/
+proc princomp data= employee_turnover plots(only)=(scree) out=princomp_score;
+run;
+
+/* K-MEANS CLUSTER ANALYSIS*/
+proc fastclus data=princomp_score maxclusters=3 out=k_means_score;
+var satisfaction evaluation;
+run;
+
+/*plot*/
+proc sgplot data=work.k_means_score ;
+scatter x=satisfaction y=evaluation / group=cluster;
+run;
+
+/*Features selection using decision tree*/
+proc hpsplit data= employee_turnover maxdepth=6;
+class department salary;
+model turnover = &char_inputs &num_inputs;
+prune none;
+run;
+
+/*sort dataset*/
+proc sort data=employee_turnover out=emp_turnover_sorted;
+by turnover;
+run;
+
+/*Create train & test splits*/
+proc surveyselect data=emp_turnover_sorted 
+  method=srs samprate=0.70 out=emp_turnover_sample seed=12345 outall;
+run;
+
+data train (drop = selected) test (drop = selected);
+set emp_turnover_sample;
+ if selected = 1 then output train;
+  else output test; 
+ run; 
+
+/*training set frequency*/ 
+proc freq data=train;
+tables turnover;
+run;
+  
+/*test set frequency*/
+proc freq data=test;
+tables turnover;
+run;
+ 
+/*Creating Logistic regression model*/
+proc logistic data=train descending plots(only  maxpoints=none)=roc; 
+class turnover /param = effect ref = first; *categorical variable; 
+model turnover (event='0')= satisfaction years_At_Company evaluation/selection=stepwise expb;
+output out= tempo p=new;
+store logistic_output;
+run;
+
+
+/* Testing with our model logisitic_output */
+proc plm restore=logistic_output;
+score data=test out=test_scored predicted=p / ilink;
+run
+;
+/*Scoring*/
+data test_scored;
+set test_scored;
+if p > 0.5 then turnover = 1;
+else turnover = 0;
+keep turnover;
+run;
+
+
