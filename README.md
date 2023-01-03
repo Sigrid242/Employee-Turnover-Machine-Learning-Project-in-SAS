@@ -10,4 +10,4 @@ A retail company is seeing an increased rate of associates quitting their job, a
 
 
 
-Source:www.kaggle.com/datasets/colara/human-resource
+Source: www.kaggle.com/datasets/colara/human-resource
