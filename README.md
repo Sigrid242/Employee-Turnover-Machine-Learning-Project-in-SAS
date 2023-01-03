@@ -5,7 +5,7 @@ Companies without good retaining strategies will have a hard time reaching their
 This scenario is aimed to understand why employees are leaving their job, to help management be more proactive in creating a productive and efficient organization.
 
 
-Business Problem
+Business Problem:
 A retail company is seeing an increased rate of associates quitting their job, and wants to understand why employees are leaving.
 
 
