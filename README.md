@@ -1,4 +1,4 @@
-# Machine Learning_Employee_Turnover_Analysis_in_SAS
+# Employee_Turnover_Analysis_in_SAS
 
 Having a high percentage of turnover rate can be bad for a company which can lead to a negative outcome. 
 Companies without good retaining strategies will have a hard time reaching their potential. 
